@@ -1,0 +1,94 @@
+'----------------------------------
+Const SP_GUID_BRD = "{B79E7B94-2A47-41C5-ADD1-83CB4DF91E0B}"
+Const strIDNumber = 2
+Const strListName="" 'My Test
+Const SP_MAIN_SITE = "https://MySharePoint.com/Sites/SPM-GPS"
+
+'TASK: We need to add Only Add Access Token function and add Authirization in MakeSoapCall function and get value in MsgBox GetTitleFromSharePointByID
+'Fill above constant value with details required, first add some Title in Test list and call change List GUID, List Name, Site URL and Item ID to get the Title in
+' Message Box
+
+Function GenerateSoapFooter() As String
+    Dim strSoapFooter As String
+    strSoapFooter = "</GetListItems></soap:Body></soap:Envelope>"
+    GenerateSoapFooter = strSoapFooter
+End Function
+
+Function GenerateSoapHeader(ByVal strListName) As String
+    Dim strSoapHeader As String
+    strSoapHeader = "<?xml version=""1.0"" encoding=""utf-8""?>" & _
+        "<soap:Envelope " & _
+        "xmlns:xsi=""http://www.w3.org/2001/XMLSchema-instance"" " & _
+        "xmlns:xsd=""http://www.w3.org/2001/XMLSchema"" " & _
+        "xmlns:soap=""http://schemas.xmlsoap.org/soap/envelope/"">" & _
+        "<soap:Body>" & _
+        "<GetListItems xmlns=""http://schemas.microsoft.com/sharepoint/soap/"">" & _
+        "<listName>" & strListName & "</listName>"
+    GenerateSoapHeader = strSoapHeader
+End Function
+
+Function MakeSoapCall(ByVal strSOAP As String) As MSXML2.DOMDocument
+    Dim xmlDoc As MSXML2.DOMDocument
+    Dim objXMLhttp As MSXML2.XMLHTTP
+    Set objXMLhttp = New MSXML2.XMLHTTP
+    objXMLhttp.Open "POST", SP_MAIN_SITE + "/_vti_bin/Lists.asmx", False
+    objXMLhttp.setRequestHeader "Content-Type", "text/xml; charset=""UTF-8"""
+    objXMLhttp.setRequestHeader "SOAPAction", "http://schemas.microsoft.com/sharepoint/soap/GetListItems"
+    
+    objXMLhttp.Send strSOAP
+    If objXMLhttp.Status = 200 Then
+        Set MakeSoapCall = objXMLhttp.responseXML
+    Else
+        'commenting this until i come up with a plan
+        Dim oFile As Object
+        Set oFile = CreateObject("Scripting.FileSystemObject").CreateTextFile("C:/Temp/output.txt")
+        oFile.WriteLine Format(Now(), "dd mmmm yy hh:mm:ss am/pm") & " : " & objXMLhttp.responseText
+        oFile.Close
+        Set oFile = Nothing
+        'MsgBox ("Error: " & objXMLhttp.Status & ". Full HTTP response recorded to C:/Temp/output.txt")
+    End If
+End Function
+
+
+Function GetColumnDataFromXML(ByVal strColumn As String, ByRef xmlDoc As MSXML2.DOMDocument) As String
+    Dim xmlNode, xmlParentNode As MSXML2.IXMLDOMNode
+    Dim xmlChildNodes As MSXML2.IXMLDOMNodeList
+    Dim xmlAttribute As MSXML2.IXMLDOMAttribute
+    Set xmlParentNode = xmlDoc.SelectSingleNode("/soap:Envelope/soap:Body/GetListItemsResponse/GetListItemsResult/listitems/rs:data")
+    Set xmlChildNodes = xmlParentNode.ChildNodes
+    GetColumnDataFromXML = ""
+    For Each xmlNode In xmlChildNodes
+        For Each xmlAttribute In xmlNode.Attributes
+            If xmlAttribute.name = "ows_" & strColumn Then
+                GetColumnDataFromXML = xmlAttribute.Value
+                Exit For
+            End If
+        Next
+    Next
+End Function
+
+
+Function GetColumnFromBRDTrackerByID(ByVal strColumnName As String, ByVal strIDNumber As String) As String
+    Dim xmlDoc As MSXML2.DOMDocument
+    Dim strSoapContent As String
+    strSoapContent = "<query><Query>" & _
+        "<Where><Eq><FieldRef Name=""ID""/><Value Type=""Integer"">" & strIDNumber & "</Value></Eq></Where>" & _
+        "</Query></query><queryOptions><QueryOptions><ExpandUserField>True</ExpandUserField></QueryOptions></queryOptions>" & _
+        "<viewFields>" & _
+        "<ViewFields><FieldRef Name=""" & strColumnName & """/></ViewFields>" & _
+        "</viewFields>"
+
+    Dim strSOAP As String
+    strSOAP = GenerateSoapHeader(SP_GUID_BRD) & strSoapContent & GenerateSoapFooter
+    Set xmlDoc = MakeSoapCall(strSOAP)
+
+    GetColumnFromBRDTrackerByID = GetColumnDataFromXML(strColumnName, xmlDoc)
+End Function
+
+'''''''''''''''''''''''''''''
+' New functions to call and get Title based on ID
+'''''''''''''''''''''''''''''
+Function GetTitleFromSharePointByID(ByVal strIDNumber As String) As String
+    GetTitleFromSharePointByID = GetColumnFromBRDTrackerByID("Title", strIDNumber)
+    MsgBox GetTitleFromSharePointByID
+End Function
